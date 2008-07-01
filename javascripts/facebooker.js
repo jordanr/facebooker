@@ -49,7 +49,11 @@ Form.serialize = function(form_element) {
 };
 
 Ajax.Updater = function (container,url,options) {
-  this.container = container;
+        this.container = {
+          success: (container.success || container),
+          failure: (container.failure || (container.success ? null : container))
+        };
+	obj = this
 	this.url=url;
 	this.ajax = new Ajax();
 	this.ajax.requireLogin = 1;
@@ -59,11 +63,16 @@ Ajax.Updater = function (container,url,options) {
 	} else {
 		this.ajax.responseType = Ajax.FBML;
 		this.ajax.ondone = function(data) {
-		  $(container).setInnerFBML(data);
+		  $(obj.container['success']).setInnerFBML(data);
 		}
 	}
 	if (options["onFailure"]) {
 		this.ajax.onerror = options["onFailure"];
+	} else {
+		this.ajax.responseType = Ajax.FBML;
+		this.ajax.onerror = function(data) {
+		  $(obj.container['failure']).setInnerFBML(data);
+		}
 	}
 	// Yes, this is an excercise in undoing what we just did
 	// FB doesn't provide encodeURI, but they will encode things passed as a hash
@@ -78,7 +87,7 @@ Ajax.Updater = function (container,url,options) {
 		val=kv[1].replace('%3D','=').replace('%26','&');
 		parameters[key]=val;
 	}
-  this.ajax.post(url,parameters);	
+	this.ajax.post(url,parameters);	
 };
 Ajax.Request = function(url,options) {
 	Ajax.Updater('unused',url,options);

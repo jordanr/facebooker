@@ -181,6 +181,7 @@ module Facebooker
 
         concat(tag("fb:editor",editor_options,true) , proc.binding)
         concat(tag(:input,{:type=>"hidden",:name=>:_method, :value=>method},false), proc.binding) unless method.blank?
+        concat(token_tag, proc.binding) unless method =='get'
         fields_for( object_name,*(args << options), &proc)
         concat("</fb:editor>",proc.binding)
       end

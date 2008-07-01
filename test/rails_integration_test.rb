@@ -6,6 +6,7 @@ begin
   require 'facebooker/rails/controller'
   require 'facebooker/rails/helpers'
   require 'facebooker/rails/facebook_form_builder'
+  require 'facebooker/rails/facebook_url_helper'
   require File.dirname(__FILE__)+'/../init'
   require 'mocha'
   
@@ -820,6 +821,197 @@ class RailsFacebookFormbuilderTest < Test::Unit::TestCase
     assert_equal "<fb:editor-custom label=\"Friends\"></fb:editor-custom>",@form_builder.multi_friend_input
   end
 end
+
+
+class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
+  class UrlHelperExtensionsClass
+    include ActionView::Helpers::UrlHelper
+    include ActionView::Helpers::TagHelper
+    def initialize(controller, canvas)
+      ENV['FACEBOOKER_RELATIVE_URL_ROOT'] ='facebook_app_name'
+      @controller = controller
+      @canvas = canvas
+    end
+
+    def protect_against_forgery?
+       false
+    end
+
+    def request_is_for_a_facebook_canvas?
+	@canvas
+    end
+  end 
+  class UrlHelperExtensionsController < NoisyController    
+    def index
+      render :nothing => true
+    end
+    def do_it
+      render :nothing => true
+    end
+  end
+
+  # We need to simulate an outside request to the callback server
+  # where the ENV['FACEBOOK_CANVAS_PATH] == ENV['FACEBOOKER_RELATIVE_URL_ROOT']
+  # is ***not***  prepended to the request uri
+  # ex. apps.facebook.com/facebook_app_name/controller/action (prepended)
+  #     test.host/controller/action    (***not*** prepended)
+  class FacebookRequest < ActionController::TestRequest  
+    # Parse the canvas name off to simulate a real request.
+    def request_uri
+       super.gsub(/^\/#{ENV['FACEBOOKER_RELATIVE_URL_ROOT']}(.*)/, '\1' )
+    end
+  end
+
+  def setup
+    ENV['FACEBOOK_CANVAS_PATH'] ='facebook_app_name'
+    @controller = UrlHelperExtensionsController.new
+    @request    = FacebookRequest.new
+    @response   = ActionController::TestResponse.new
+
+    @current_page = "http://test.host/rails_url_helper_extensions_test/url_helper_extensions/do_it?fb_sig_in_canvas=1"
+    @not_current_page = "http://some.host/control/action"
+
+    @u = UrlHelperExtensionsClass.new(@controller, true)
+    @non_canvas_u = UrlHelperExtensionsClass.new(@controller, false)
+    @label = "Testing"
+    @url = "test.host"
+    @prompt = "Are you sure?"
+    @default_title = "Confirm Request"
+    @title = "Please Confirm"
+    @style = "'color: 'black', background: 'white'"
+    @default_style = "'width','200px'"
+  end
+
+  def test_link_to
+    assert_equal "<a href=\"#{@url}\">Testing</a>", @u.link_to(@label, @url)
+  end
+
+  def test_link_to_with_popup
+    assert_raises(ActionView::ActionViewError) {@u.link_to(@label,@url, :popup=>true)}
+  end
+
+  def test_link_to_with_confirm
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+                 "var a=this;dlg.onconfirm = function() { " + 
+                 "document.setLocation(a.getHref()); };return false;\">#{@label}</a>",
+                  @u.link_to(@label, @url, :confirm => @prompt) )
+  end
+  def test_link_to_with_confirm_with_title
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+                 "var a=this;dlg.onconfirm = function() { " + 
+                 "document.setLocation(a.getHref()); };return false;\">#{@label}</a>",
+                  @u.link_to(@label, @url, :confirm => [@title,@prompt]) )
+  end
+  def test_link_to_with_confirm_with_title_and_style
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@title}\',\'#{@prompt}\').setStyle(#{@style});"+
+                 "var a=this;dlg.onconfirm = function() { " + 
+                 "document.setLocation(a.getHref()); };return false;\">#{@label}</a>",
+                  @u.link_to(@label, @url, :confirm => [@title,@prompt,@style]) )
+  end
+
+  def test_link_to_with_method
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var a=this;var f = document.createElement('form'); f.setStyle('display','none'); "+
+                 "a.getParentNode().appendChild(f); f.setMethod('POST'); f.setAction(a.getHref());" +
+                 "var m = document.createElement('input'); m.setType('hidden'); "+
+                 "m.setName('_method'); m.setValue('delete'); f.appendChild(m);"+
+                 "f.submit();return false;\">#{@label}</a>", @u.link_to(@label,@url, :method=>:delete))
+  end
+
+  def test_link_to_with_confirm_and_method
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+                 "var a=this;dlg.onconfirm = function() { " + 
+                 "var f = document.createElement('form'); f.setStyle('display','none'); "+
+                 "a.getParentNode().appendChild(f); f.setMethod('POST'); f.setAction(a.getHref());" +
+                 "var m = document.createElement('input'); m.setType('hidden'); "+
+                 "m.setName('_method'); m.setValue('delete'); f.appendChild(m);"+
+                 "f.submit(); };return false;\">#{@label}</a>", @u.link_to(@label,@url, :confirm=>@prompt, :method=>:delete) )
+  end
+  def test_link_to_with_confirm_and_method_for_non_canvas_page
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"if (confirm(\'#{@prompt}\')) { var f = document.createElement('form'); f.style.display = 'none'; "+
+		      "this.parentNode.appendChild(f); f.method = 'POST'; f.action = this.href;var m = document.createElement('input'); "+
+		      "m.setAttribute('type', 'hidden'); m.setAttribute('name', '_method'); m.setAttribute('value', 'delete'); "+
+		      "f.appendChild(m);f.submit(); };return false;\">#{@label}</a>",
+                      @non_canvas_u.link_to(@label,@url, :confirm=>@prompt, :method=>:delete) )
+  end
+
+  def test_button_to
+    assert_equal "<form method=\"post\" action=\"#{@url}\" class=\"button-to\"><div>" +
+                 "<input type=\"submit\" value=\"#{@label}\" /></div></form>", @u.button_to(@label,@url)
+  end
+
+  def test_button_to_with_confirm
+    assert_equal "<form method=\"post\" action=\"#{@url}\" class=\"button-to\"><div>" +
+                 "<input onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+                 "var a=this;dlg.onconfirm = function() { "+
+                 "a.getParentNode().getParentNode().submit(); };return false;\" type=\"submit\" value=\"#{@label}\" /></div></form>", 
+                 @u.button_to(@label,@url, :confirm=>@prompt)
+  end
+
+  def test_button_to_with_confirm_for_non_canvas_page
+    assert_equal "<form method=\"post\" action=\"#{@url}\" class=\"button-to\"><div>"+
+	  	 "<input onclick=\"return confirm(\'#{@prompt}\');\" type=\"submit\" value=\"#{@label}\" /></div></form>",
+                 @non_canvas_u.button_to(@label,@url, :confirm=>@prompt)
+  end
+
+
+  def test_current_page_with_current_url_string
+       post :do_it, example_rails_params_including_fb
+       assert @u.current_page?(@current_page)
+  end
+  def test_current_page_with_non_current_url_string
+       post :do_it, example_rails_params_including_fb
+       assert !@u.current_page?(@not_current_page)
+  end
+  def test_current_page_with_current_url_hash
+       post :do_it, example_rails_params_including_fb
+       assert @u.current_page?(:action=>"do_it", :fb_sig_in_canvas=>"1")
+  end
+  def test_current_page_with_non_current_url_hash
+       post :do_it, example_rails_params_including_fb
+       assert !@u.current_page?(:action=>"not_action")
+  end
+  def test_current_page_with_current_url_hash_for_non_canvas_page
+       post :do_it
+       assert @non_canvas_u.current_page?(:action=>"do_it")
+  end
+  def test_current_page_with_non_current_url_hash_for_non_canvas_page
+       post :do_it
+       assert !@non_canvas_u.current_page?(:action=>"not_action")
+  end
+
+  def test_link_to_unless_with_true
+       assert_equal @label, @u.link_to_unless(true,@label,@url)
+  end
+  def test_link_to_unless_with_false
+       assert_equal @u.link_to(@label,@url), @u.link_to_unless(false,@label,@url)
+  end
+
+  def test_link_to_if_with_true
+       assert_equal @u.link_to(@label,@url), @u.link_to_if(true,@label,@url)
+  end
+  def test_link_to_if_with_false
+       assert_equal @label, @u.link_to_if(false,@label,@url)
+  end
+
+  def test_link_to_unless_current_with_current
+       post :do_it, example_rails_params_including_fb
+       assert_equal @label, @u.link_to_unless_current(@label,{:action=>"do_it", :fb_sig_in_canvas=>"1"})
+  end
+  def test_link_to_unless_current_with_not_current
+       post :do_it, example_rails_params_including_fb
+       assert_equal @u.link_to(@label,{:action=>"index",:fb_sig_in_canvas=>"1"}),
+                        @u.link_to_unless_current(@label,{:action=>"index", :fb_sig_in_canvas=>"1"})
+  end
+
+  private
+    # Makes the canvas page be prepended for the current page tests
+    def example_rails_params_including_fb
+       {"fb_sig_in_canvas"=>"1"}
+    end
+end
+
+
+
 # rescue LoadError
 #   $stderr.puts "Couldn't find action controller.  That's OK.  We'll skip it."
 end

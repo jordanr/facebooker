@@ -4,7 +4,7 @@ module Facebooker
       def assert_facebook_redirect_to(url)
         assert_response :success
         assert_not_nil facebook_redirect_url
-        assert_equal url, facebook_redirect_url
+        assert_equal facebook_relative_path(url), facebook_relative_path(facebook_redirect_url)
       end
 
       def follow_facebook_redirect!
@@ -81,7 +81,12 @@ module Facebooker
         raw_string = facebook_sig_params.map{ |*args| args.join('=') }.sort.join
         Digest::MD5.hexdigest([raw_string, Facebooker::Session.secret_key].join)
       end
-      
+
+
+      def facebook_relative_path(url)
+        match = url.match(/^http:\/\/apps\.facebook\.com(.*)/)
+        match.nil? ? url : match.captures[0]
+      end
     end
   end
 end
