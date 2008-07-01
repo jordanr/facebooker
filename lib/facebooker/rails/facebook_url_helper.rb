@@ -119,9 +119,9 @@ module ActionView
 	#
 	# link_to("Facebooker", "http://rubyforge.org/projects/facebooker", :confirm=>"Make Awesome Choice?")
 	#
-	# link_to("rFacebook", "http://rubyforge.org/projects/rfacebook", :confirm=>["Terrible!", "Are you crazy?")
+	# link_to("rFacebook", "http://rubyforge.org/projects/rfacebook", :confirm=> { :title=>"Terrible!", :content=>"Are you crazy?"})
 	#
-	# link_to("Cool page", :action=>'cool_page', :confirm=>["Please Confirm", "Are you sure?", "'width','300px'")
+	# link_to("Cool page", :action=>'cool_page', :confirm=> {:content=>"Are you sure?", :width=>"300px" })
         def confirm_javascript_function_with_facebooker(confirm, fun = nil)
           if !request_is_for_a_facebook_canvas?
             confirm_javascript_function_without_facebooker(confirm)
@@ -132,10 +132,10 @@ module ActionView
 		content = confirm_options.delete("content") || "Are you sure?"
 		style = confirm_options.empty? ? "" : convert_options_to_css(confirm_options)
   	    else
-	      title,content,style = 'Please Confirm', confirm, ""
+	      title,content,style = 'Please Confirm', confirm.to_s, ""
 	    end
 
-            "var dlg = new Dialog().showChoice('#{escape_javascript(title.to_s)}','#{escape_javascript(content.to_s)}').setStyle(#{style});"+
+            "var dlg = new Dialog().showChoice('#{escape_javascript(title)}','#{content}').setStyle(#{style});"+
 	    "var a=this;dlg.onconfirm = function() { #{fun ? fun : 'document.setLocation(a.getHref());'} };"
 	  end
         end
