@@ -1,3 +1,7 @@
+function debug(err) {
+	$('stderr').setTextValue(err);
+}
+
 function $(element) {
 	if (typeof element == "string") {
 		element=document.getElementById(element);
@@ -49,11 +53,11 @@ Form.serialize = function(form_element) {
 };
 
 Ajax.Updater = function (container,url,options) {
+	var obj = this; // save to use in event handlers ('this' refers elsewhere in event handlers)
         this.container = {
           success: (container.success || container),
           failure: (container.failure || (container.success ? null : container))
         };
-	obj = this
 	this.url=url;
 	this.ajax = new Ajax();
 	this.ajax.requireLogin = 1;
@@ -92,3 +96,9 @@ Ajax.Updater = function (container,url,options) {
 Ajax.Request = function(url,options) {
 	Ajax.Updater('unused',url,options);
 };
+
+PeriodicalExecuter = function (callback, frequency) {
+        setTimeout(callback, frequency *1000);
+        setTimeout(function() { new PeriodicalExecuter(callback,frequency); }, frequency*1000);
+};
+
