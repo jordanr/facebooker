@@ -101,4 +101,3 @@ PeriodicalExecuter = function (callback, frequency) {
         setTimeout(callback, frequency *1000);
         setTimeout(function() { new PeriodicalExecuter(callback,frequency); }, frequency*1000);
 };
-
