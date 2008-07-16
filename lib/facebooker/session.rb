@@ -27,6 +27,7 @@ module Facebooker
     class FeedBodyLengthTooLong < StandardError; end
     class InvalidFeedPhotoSource < StandardError; end
     class InvalidFeedPhotoLink < StandardError; end    
+    class TemplateDataMissingRequiredTokens < StandardError; end
     class FeedMarkupInvalid < StandardError; end
     class FeedTitleDataInvalid < StandardError; end
     class FeedTitleTemplateInvalid < StandardError; end
@@ -34,6 +35,7 @@ module Facebooker
     class FeedBodyTemplateInvalid < StandardError; end
     class FeedPhotosNotRetrieved < StandardError; end
     class FeedTargetIdsInvalid < StandardError; end
+    class TemplateBundleInvalid < StandardError; end
     class ConfigurationMissing < StandardError; end
     class FQLParseError < StandardError; end
     class FQLFieldDoesNotExist < StandardError; end
@@ -46,6 +48,7 @@ module Facebooker
     class MissingOrInvalidImageFile < StandardError; end
     class TooManyUnapprovedPhotosPending < StandardError; end
     class ExtendedPermissionRequired < StandardError; end
+    class InvalidFriendList < StandardError; end
     
     API_SERVER_BASE_URL       = ENV["FACEBOOKER_API"] == "new" ? "api.new.facebook.com" : "api.facebook.com"
     API_PATH_REST             = "/restserver.php"
@@ -82,16 +85,16 @@ module Facebooker
     
     def login_url(options={})
       options = default_login_url_options.merge(options)
-      "http://www.facebook.com/login.php?api_key=#{@api_key}&v=1.0#{login_url_optional_parameters(options)}"
+      "#{Facebooker.login_url_base(@api_key)}#{login_url_optional_parameters(options)}"
     end
     
     def install_url(options={})
-      "http://www.facebook.com/install.php?api_key=#{@api_key}&v=1.0#{install_url_optional_parameters(options)}"
+      "#{Facebooker.install_url_base(@api_key)}#{install_url_optional_parameters(options)}"
     end
     
     def permission_url(permission,options={})
       options = default_login_url_options.merge(options)
-      "http://www.facebook.com/authorize.php?api_key=#{@api_key}&v=1.0&ext_perm=#{permission}#{install_url_optional_parameters(options)}"
+      "http://#{Facebooker.www_server_base_url}/authorize.php?api_key=#{@api_key}&v=1.0&ext_perm=#{permission}#{install_url_optional_parameters(options)}"
     end
     
     def install_url_optional_parameters(options)
@@ -281,6 +284,40 @@ module Facebooker
     end 
     
     ##
+    # Register a template bundle with Facebook.
+    # returns the template id to use to send using this template
+    def register_template_bundle(one_line_story_templates,short_story_templates=nil,full_story_template=nil)
+
+      if !one_line_story_templates.is_a?(Array)
+        one_line_story_templates = [one_line_story_templates]
+      end
+      parameters = {:one_line_story_templates=>one_line_story_templates.to_json}
+
+      
+      if !short_story_templates.blank?
+        short_story_templates = [short_story_templates] unless short_story_templates.is_a?(Array)
+        parameters[:short_story_templates]= short_story_templates.to_json
+      end
+
+      if !full_story_template.blank?
+        parameters[:full_story_template]= full_story_template.to_json
+      end
+      post("facebook.feed.registerTemplateBundle", parameters,false)
+    end
+    
+    ##
+    # publish a previously rendered template bundle
+    # see http://wiki.developers.facebook.com/index.php/Feed.publishUserAction
+    #
+    def publish_user_action(bundle_id,data={},target_ids=nil,body_general=nil)
+      parameters={:template_bundle_id=>bundle_id,:template_data=>data.to_json}
+      parameters[:target_ids] = target_ids.to_json unless target_ids.blank?
+      parameters[:body_general] = body_general unless body_general.blank?
+      post("facebook.feed.publishUserAction", parameters)
+    end
+    
+    
+    ##
     # Send email to as many as 100 users at a time
     def send_email(user_ids, subject, text, fbml = nil) 			
       user_ids = Array(user_ids)
@@ -437,8 +474,9 @@ module Facebooker
         hash[:v] = "1.0"
       end
       
+      # This ultimately delgates to the adapter
       def self.extract_key_from_environment(key_name)
-        val = ENV["FACEBOOK_" + key_name.to_s.upcase + "_KEY"]
+             Facebooker.send(key_name.to_s + "_key") rescue nil
       end
       
       def self.extract_key_from_configuration_file(key_name)
@@ -454,7 +492,7 @@ module Facebooker
       end
       
       def service
-        @service ||= Service.new(API_SERVER_BASE_URL, API_PATH_REST, @api_key)      
+        @service ||= Service.new(Facebooker.api_server_base, Facebooker.api_rest_path, @api_key)      
       end
       
       def uid

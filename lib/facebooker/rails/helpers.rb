@@ -84,9 +84,9 @@ module Facebooker
       #    <%= fb_req_choice("They will get this button, too",new_poke_path) %>
       #  <% end %>
       def fb_multi_friend_request(type,friend_selector_message,url,&block)
-        content = capture(&block)  	
-        concat(content_tag("fb:request-form", 
-                            fb_multi_friend_selector(friend_selector_message),
+        content = capture(&block)
+        concat(content_tag("fb:request-form",
+                            fb_multi_friend_selector(friend_selector_message) + token_tag,
                             {:action=>url,:method=>"post",:invite=>true,:type=>type,:content=>content}
                             ),
               block.binding)
@@ -181,7 +181,7 @@ module Facebooker
 
         concat(tag("fb:editor",editor_options,true) , proc.binding)
         concat(tag(:input,{:type=>"hidden",:name=>:_method, :value=>method},false), proc.binding) unless method.blank?
-        concat(token_tag, proc.binding) unless method =='get'
+        concat(token_tag, proc.binding)
         fields_for( object_name,*(args << options), &proc)
         concat("</fb:editor>",proc.binding)
       end
@@ -517,7 +517,7 @@ module Facebooker
       #
       # Return the URL for the about page of the application
       def fb_about_url
-        "http://www.facebook.com/apps/application.php?api_key=#{ENV["FACEBOOK_API_KEY"]}"
+        "http://www.facebook.com/apps/application.php?api_key=#{Facebooker.api_key}"
       end
       
       #

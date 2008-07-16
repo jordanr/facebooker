@@ -1,9 +1,12 @@
 require File.dirname(__FILE__) + '/test_helper.rb'
+require 'net/http_multipart_post'
 class TestFacebooker < Test::Unit::TestCase
 
   def setup
     @api_key = "95a71599e8293s66f1f0a6f4aeab3df7"
     @secret_key = "3e4du8eea435d8e205a6c9b5d095bed1"
+    ENV["FACEBOOK_API_KEY"] = @api_key
+    ENV["FACEBOOK_SECRET_KEY"] = @secret_key
     @session = Facebooker::Session.create(@api_key, @secret_key)
     @desktop_session = Facebooker::Session::Desktop.create(@api_key, @secret_key)
     @service = Facebooker::Service.new('http://apibase.com', '/api/path', @api_key)
@@ -61,6 +64,12 @@ class TestFacebooker < Test::Unit::TestCase
     mock_http = establish_session
     mock_http.should_receive(:post_form).and_return(example_friends_xml).once.ordered(:posts)
     assert_equal([222333, 1240079], @session.user.friends.map{|friend| friend.id})
+  end
+  
+  def test_can_get_current_users_friend_lists
+    mock_http = establish_session
+    mock_http.should_receive(:post_form).and_return(example_friend_lists_xml).once.ordered(:posts)
+    assert_equal([12089150545, 16361710545], @session.user.friend_lists.map{|friend_list| friend_list.flid})
   end
   
   def test_can_get_info_for_instance_of_user
@@ -569,6 +578,22 @@ class TestFacebooker < Test::Unit::TestCase
       <uid>222333</uid>
       <uid>1240079</uid>
     </friends_get_response>
+    XML
+  end
+  
+  def example_friend_lists_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <friends_getLists_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+      <friendlist>
+    		<flid>12089150545</flid>
+    		<name>Family</name>
+  		</friendlist>
+  		<friendlist>
+    		<flid>16361710545</flid>
+    		<name>Entrepreneuer</name>
+  		</friendlist>
+    </friends_getLists_response>
     XML
   end
   

@@ -45,6 +45,10 @@ begin
       render :text=>url_for(options)
     end
     
+     def named_route_test
+      render :text=>comments_url()
+    end
+    
     def image_test
       render :inline=>"<%=image_tag 'image.png'%>"
     end
@@ -126,6 +130,7 @@ begin
       get :named_route_test, example_rails_params_including_fb
       assert_equal "http://apps.facebook.com/facebook_app_name/comments",@response.body
     end
+   
     def test_named_route_doesnt_include_canvas_path_when_in_canvas_with_canvas_equals_false
       get :canvas_false_test, example_rails_params_including_fb
       assert_equal "http://test.host/comments",@response.body
@@ -230,6 +235,11 @@ class RailsIntegrationTest < Test::Unit::TestCase
     @controller.stubs(:verify_signature).returns(true)
     
   end
+  
+   def test_named_route_includes_new_canvas_path_when_in_new_canvas
+      get :named_route_test, example_rails_params_including_fb.merge("fb_sig_in_new_facebook"=>"1")
+      assert_equal "http://apps.new.facebook.com/root/comments",@response.body
+    end
 
   def test_if_controller_requires_facebook_authentication_unauthenticated_requests_will_redirect
     get :index
@@ -299,7 +309,7 @@ class RailsIntegrationTest < Test::Unit::TestCase
   
   def test_user_friends_can_be_populated_from_facebook_params_if_available
     get :index, example_rails_params_including_fb
-    assert_not_nil(friends = @controller.facebook_session.user.instance_variable_get("@friends"))
+    assert_not_nil(friends = @controller.facebook_session.user.friends)
     assert_equal(111, friends.size)    
   end
   
@@ -611,8 +621,20 @@ class RailsHelperTest < Test::Unit::TestCase
   
   def test_fb_multi_friend_request
     @h.expects(:capture).returns("body")
+    @h.expects(:protect_against_forgery?).returns(false)
     @h.expects(:fb_multi_friend_selector).returns("friend selector")
     assert_equal "<fb:request-form action=\"action\" content=\"body\" invite=\"true\" method=\"post\" type=\"invite\">friend selector</fb:request-form>",
+      (@h.fb_multi_friend_request("invite","ignored","action") {})
+  end
+  
+  def test_fb_multi_friend_request_with_protection_against_forgery
+    @h.expects(:capture).returns("body")
+    @h.expects(:protect_against_forgery?).returns(true)
+    @h.expects(:request_forgery_protection_token).returns('forgery_token')
+    @h.expects(:form_authenticity_token).returns('form_token')
+
+    @h.expects(:fb_multi_friend_selector).returns("friend selector")
+    assert_equal "<fb:request-form action=\"action\" content=\"body\" invite=\"true\" method=\"post\" type=\"invite\">friend selector<input name=\"forgery_token\" type=\"hidden\" value=\"form_token\" /></fb:request-form>",
       (@h.fb_multi_friend_request("invite","ignored","action") {})
   end
   
@@ -678,9 +700,18 @@ class RailsHelperTest < Test::Unit::TestCase
   end
   
   def test_facebook_form_for
+    @h.expects(:protect_against_forgery?).returns(false)
     form_body=@h.facebook_form_for(:model,:url=>"action") do
     end
     assert_equal "<fb:editor action=\"action\"></fb:editor>",form_body
+  end
+  
+  def test_facebook_form_for_with_authenticity_token
+    @h.expects(:protect_against_forgery?).returns(true)
+    @h.expects(:request_forgery_protection_token).returns('forgery_token')
+    @h.expects(:form_authenticity_token).returns('form_token')
+    assert_equal "<fb:editor action=\"action\"><input name=\"forgery_token\" type=\"hidden\" value=\"form_token\" /></fb:editor>",
+      (@h.facebook_form_for(:model, :url => "action") {})
   end
   
   def test_fb_friend_selector
@@ -783,6 +814,11 @@ class RailsFacebookFormbuilderTest < Test::Unit::TestCase
   def test_text_area
     assert_equal "<fb:editor-textarea id=\"testmodel_name\" label=\"Name\" name=\"testmodel[name]\">Mike</fb:editor-textarea>",
         @form_builder.text_area(:name)    
+  end
+  
+  def test_default_name_and_id
+    assert_equal "<fb:editor-text id=\"different_id\" label=\"Name\" name=\"different_name\" value=\"Mike\"></fb:editor-text>",
+        @form_builder.text_field(:name, {:name => 'different_name', :id => 'different_id'})
   end
   
   def test_collection_typeahead
