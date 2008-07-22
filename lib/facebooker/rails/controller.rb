@@ -125,7 +125,7 @@ module Facebooker
       end
       
       def redirect_to(*args)
-        if request_is_for_a_facebook_canvas?
+        if request_is_for_a_facebook_canvas? and !request_is_facebook_tab?
           render :text => fbml_redirect_tag(*args)
         else
           super
@@ -139,6 +139,11 @@ module Facebooker
       def request_is_for_a_facebook_canvas?
         !params['fb_sig_in_canvas'].blank?
       end
+      
+      def request_is_facebook_tab?
+        !params["fb_sig_in_profile_tab"].blank?
+      end
+      
       def request_is_facebook_ajax?
         params["fb_sig_is_mockajax"]=="1" || params["fb_sig_is_ajax"]=="1"
       end
