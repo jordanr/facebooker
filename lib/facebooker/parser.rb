@@ -89,6 +89,12 @@ module Facebooker
       element('auth_createToken_response', data).text_value
     end
   end
+  
+  class RegisterUsers
+    def self.process(data)
+      Facebooker.json_decode(data)
+    end
+  end
 
   class GetSession < Parser#:nodoc:
     def self.process(data)      
@@ -114,6 +120,24 @@ module Facebooker
     end
   end
   
+  class GetLoggedInUser < Parser#:nodoc:
+    def self.process(data)
+      Integer(element('users_getLoggedInUser_response', data).text_value)
+    end
+  end
+
+  class PagesIsAdmin < Parser#:nodoc:
+    def self.process(data)
+      element('pages_isAdmin_response', data).text_value == '1'
+    end
+  end
+
+  class PagesGetInfo < Parser#:nodoc:
+    def self.process(data)
+      array_of_hashes(element('pages_getInfo_response', data), 'page')
+    end
+  end
+
   class PublishStoryToUser < Parser#:nodoc:
     def self.process(data)
       element('feed_publishStoryToUser_response', data).text_value
@@ -422,7 +446,8 @@ module Facebooker
       response_element = element('error_response', data) rescue nil
       if response_element
         hash = hashinate(response_element)
-        raise EXCEPTIONS[Integer(hash['error_code'])].new(hash['error_msg'])
+        exception = EXCEPTIONS[Integer(hash['error_code'])] || StandardError
+        raise exception.new(hash['error_msg'])
       end
     end
   end
@@ -431,8 +456,12 @@ module Facebooker
     PARSERS = {
       'facebook.auth.createToken' => CreateToken,
       'facebook.auth.getSession' => GetSession,
+      'facebook.connect.registerUsers' => RegisterUsers,
       'facebook.users.getInfo' => UserInfo,
       'facebook.users.setStatus' => SetStatus,
+      'facebook.users.getLoggedInUser' => GetLoggedInUser,
+      'facebook.pages.isAdmin' => PagesIsAdmin,
+      'facebook.pages.getInfo' => PagesGetInfo,
       'facebook.friends.get' => GetFriends,
       'facebook.friends.getLists' => FriendListsGet,
       'facebook.friends.areFriends' => AreFriends,

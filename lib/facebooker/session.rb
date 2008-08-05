@@ -1,4 +1,3 @@
-require 'digest/md5'
 require 'cgi'
 
 module Facebooker
@@ -49,6 +48,9 @@ module Facebooker
     class TooManyUnapprovedPhotosPending < StandardError; end
     class ExtendedPermissionRequired < StandardError; end
     class InvalidFriendList < StandardError; end
+    class UserRegistrationFailed < StandardError
+      attr_accessor :failed_users
+    end
     
     API_SERVER_BASE_URL       = ENV["FACEBOOKER_API"] == "new" ? "api.new.facebook.com" : "api.facebook.com"
     API_PATH_REST             = "/restserver.php"
@@ -154,9 +156,9 @@ module Facebooker
       secure_with!(response['session_key'], response['uid'], response['expires'], response['secret'])
     end    
     
-    def secure_with!(session_key, uid, expires, secret_from_session = nil)
+    def secure_with!(session_key, uid = nil, expires = nil, secret_from_session = nil)
       @session_key = session_key
-      @uid = Integer(uid)
+      @uid = uid ? Integer(uid) : post('facebook.users.getLoggedInUser', :session_key => session_key)
       @expires = Integer(expires)
       @secret_from_session = secret_from_session
     end
