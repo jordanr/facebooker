@@ -4,7 +4,7 @@ module Facebooker
       def assert_facebook_redirect_to(url)
         assert_response :success
         assert_not_nil facebook_redirect_url
-        assert_equal url, facebook_redirect_url
+        assert_relatively_equal url, facebook_redirect_url
       end
 
       def follow_facebook_redirect!
@@ -65,6 +65,21 @@ module Facebooker
           end
           fb_params
         end
+      end
+
+      # See: Module ActionController::Assertions::ResponseAssertions
+      # assert_redirected_to.
+      # Allows you to use relative paths in testing.
+      # TODO: Support routes.
+      def assert_relatively_equal(expected, actual)
+        msg = "expected a redirect to #{expected}, found one to #{actual}"
+	url_regexp = %r{^(\w+://.*?(/|$|\?))(.*)$}
+        eurl, epath, url, path = [expected, actual].collect do |url|
+          u, p = (url_regexp =~ url) ? [$1, $3] : [nil, url]
+          [u, (p.first == '/') ? p : '/' + p]
+        end.flatten
+	assert_equal(eurl, url, msg) if eurl && url
+        assert_equal(epath, path, msg) if epath && path
       end
 
       def facebook_redirect_url
