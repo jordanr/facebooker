@@ -49,11 +49,11 @@ module Facebooker
       #    Send a poke to: <%= fb_friend_selector %> <br />
       #    <%= fb_request_form_submit %>
       #  <% end %>
-      def fb_request_form(type,message_param,url,&block)
+      def fb_request_form(type,message_param,url,options={},&block)
         content = capture(&block)
         message = @template.instance_variable_get("@content_for_#{message_param}") 
         concat(content_tag("fb:request-form", content + token_tag,
-                  {:action=>url,:method=>"post",:invite=>true,:type=>type,:content=>message}),
+                  {:action=>url,:method=>"post",:invite=>true,:type=>type,:content=>message}.merge(options)),
               block.binding)
       end
 
@@ -526,6 +526,14 @@ module Facebooker
       def fb_board(xid,options={})
         options = options.dup
         tag("fb:board",stringify_vals(options.merge(:xid=>xid)))
+      end
+      
+      def fb_add_profile_section
+        tag "fb:add-section-button",:section=>"profile"
+      end
+      
+      def fb_add_info_section
+        tag "fb:add-section-button",:section=>"info"
       end
       
       def fb_prompt_permission(permission,message,callback=nil)

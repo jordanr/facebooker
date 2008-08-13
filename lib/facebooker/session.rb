@@ -282,10 +282,10 @@ module Facebooker
       if email_fbml
         params[:email] = email_fbml
       end
-      params[:type]="general"
+      params[:type]="user_to_user"
       # if there is no uid, this is an announcement
       unless uid?
-        params[:type]="announcement"
+        params[:type]="app_to_user"
       end
       
       post 'facebook.notifications.send', params,uid?
@@ -394,7 +394,7 @@ module Facebooker
     
     def add_to_batch(req,&proc)
       batch_request = BatchRequest.new(req,proc)
-      @batch_queue<<batch_request
+      Thread.current[:facebooker_current_batch_queue]<<batch_request
       batch_request
     end
     
@@ -435,12 +435,12 @@ module Facebooker
     #
     def batch(serial_only=false)
       @batch_request=true
-      @batch_queue=[]
+      Thread.current[:facebooker_current_batch_queue]=[]
       yield
       # Set the batch request to false so that post will execute the batch job
       @batch_request=false
-      BatchRun.current_batch=@batch_queue
-      post("facebook.batch.run",:method_feed=>@batch_queue.map{|q| q.uri}.to_json,:serial_only=>serial_only.to_s)
+      BatchRun.current_batch=Thread.current[:facebooker_current_batch_queue]
+      post("facebook.batch.run",:method_feed=>BatchRun.current_batch.map{|q| q.uri}.to_json,:serial_only=>serial_only.to_s)
     ensure
       @batch_request=false
       BatchRun.current_batch=nil
