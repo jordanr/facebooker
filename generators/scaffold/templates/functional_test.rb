@@ -19,7 +19,7 @@ class <%= controller_class_name %>ControllerTest < ActionController::TestCase
       facebook_post :create, :<%= file_name %> => { }
     end
 
-    assert_facebook_redirect_to <%= file_name %>_path(assigns(:<%= file_name %>), :only_path=>false)
+    assert_facebook_redirect_to <%= file_name %>_url(assigns(:<%= file_name %>))
   end
 
   def test_should_show_<%= file_name %>_for_facebook
@@ -34,7 +34,7 @@ class <%= controller_class_name %>ControllerTest < ActionController::TestCase
 
   def test_should_update_<%= file_name %>_for_facebook
     facebook_put :update, :id => <%= table_name %>(:one).id, :<%= file_name %> => { }
-    assert_facebook_redirect_to <%= file_name %>_path(assigns(:<%= file_name %>), :only_path=>false)
+    assert_facebook_redirect_to <%= file_name %>_url(assigns(:<%= file_name %>))
   end
 
   def test_should_destroy_<%= file_name %>_for_facebook
@@ -42,7 +42,7 @@ class <%= controller_class_name %>ControllerTest < ActionController::TestCase
       facebook_delete :destroy, :id => <%= table_name %>(:one).id
     end
 
-    assert_facebook_redirect_to <%= table_name %>_path(:only_path=>false)
+    assert_facebook_redirect_to <%= table_name %>_url
   end
 
   def test_should_get_index
