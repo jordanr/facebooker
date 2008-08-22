@@ -107,6 +107,10 @@ class TestPublisher < Facebooker::Rails::Publisher
     from user
     data :friend=>"Mike"
   end
+  def user_action_no_data(user)
+    send_as :user_action
+    from user
+  end
   
   def no_send_as(to)
     recipients to
@@ -256,6 +260,15 @@ class PublisherTest < Test::Unit::TestCase
     Facebooker::Rails::Publisher::FacebookTemplate.expects(:for).returns(20309041537)
     TestPublisher.deliver_user_action(@from_user)
   end
+  
+  def test_publishing_user_data_no_action_gives_nil_hash
+    @from_user = Facebooker::User.new
+    @session = Facebooker::Session.new("","")
+    @from_user.stubs(:session).returns(@session)
+    @session.expects(:publish_user_action).with(20309041537,{},nil,nil)
+    Facebooker::Rails::Publisher::FacebookTemplate.expects(:for).returns(20309041537)
+    TestPublisher.deliver_user_action_no_data(@from_user)
+  end
   def test_no_sends_as_raises
     assert_raises(Facebooker::Rails::Publisher::UnspecifiedBodyType) {
       TestPublisher.deliver_no_send_as(@user)
@@ -281,7 +294,7 @@ class PublisherTest < Test::Unit::TestCase
   
   def test_default_url_options
     Facebooker.expects(:facebook_path_prefix).returns("/mike")
-    assert_equal({:host=>"apps.facebook.com/mike"},TestPublisher.default_url_options)
+    assert_equal({:host=>"apps.new.facebook.com/mike"},TestPublisher.default_url_options)
   end
   
   def test_recipients
