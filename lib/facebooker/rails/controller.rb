@@ -41,12 +41,29 @@ module Facebooker
         (@facebook_session = session[:facebook_session]) && session[:facebook_session].secured? if valid_session_key_in_session?
       end
       
+      def user_has_deauthorized_application?
+        # if we're inside the facebook session and there is no session key,
+        # that means the user revoked our access
+        # we don't want to keep using the old expired key from the cookie. 
+        request_is_for_a_facebook_canvas? and params[:fb_sig_session_key].blank?
+      end
+      
+      def clear_facebook_session_information
+        session[:facebook_session] = nil
+        @facebook_session=nil        
+      end
+      
       def valid_session_key_in_session?
         #before we access the facebook_params, make sure we have the parameters
         #otherwise we will blow up trying to access the secure parameters
-       !session[:facebook_session].blank? &&  (params[:fb_sig_session_key].blank? || session[:facebook_session].session_key == facebook_params[:session_key])
+        if user_has_deauthorized_application?
+          clear_facebook_session_information
+          false
+        else
+          !session[:facebook_session].blank? &&  (params[:fb_sig_session_key].blank? || session[:facebook_session].session_key == facebook_params[:session_key])
+        end
       end
-      
+            
       def secure_with_token!
         if params['auth_token']
           @facebook_session = new_facebook_session
@@ -66,9 +83,15 @@ module Facebooker
         end
       end
       
+      #override to specify where the user should be sent after logging in
+      def after_facebook_login_url
+        nil
+      end
+      
       def create_new_facebook_session_and_redirect!
         session[:facebook_session] = new_facebook_session
-        redirect_to session[:facebook_session].login_url unless @installation_required
+        url_params = after_facebook_login_url.nil? ? {} : {:next=>after_facebook_login_url}
+        redirect_to session[:facebook_session].login_url(url_params) unless @installation_required
         false
       end
       

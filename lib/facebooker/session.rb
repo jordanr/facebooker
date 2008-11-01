@@ -210,6 +210,18 @@ module Facebooker
       end
     end
 
+    def users_standard(user_ids, fields=[])
+      post("facebook.users.getStandardInfo",:uids=>user_ids.join(","),:fields=>User.user_fields(fields)) do |users|
+        users.map { |u| User.new(u)}
+      end
+    end
+
+    def users(user_ids, fields=[])
+      post("facebook.users.getInfo",:uids=>user_ids.join(","),:fields=>User.standard_fields(fields)) do |users|
+        users.map { |u| User.new(u)}
+      end
+    end
+
     def pages(options = {})
       raise ArgumentError, 'fields option is mandatory' unless options.has_key?(:fields)
       @pages ||= {}
@@ -304,13 +316,15 @@ module Facebooker
     ##
     # Register a template bundle with Facebook.
     # returns the template id to use to send using this template
-    def register_template_bundle(one_line_story_templates,short_story_templates=nil,full_story_template=nil)
-
+    def register_template_bundle(one_line_story_templates,short_story_templates=nil,full_story_template=nil, action_links=nil)
       if !one_line_story_templates.is_a?(Array)
         one_line_story_templates = [one_line_story_templates]
       end
       parameters = {:one_line_story_templates=>one_line_story_templates.to_json}
-
+      
+      if !action_links.blank?
+        parameters[:action_links] = action_links.to_json
+      end
       
       if !short_story_templates.blank?
         short_story_templates = [short_story_templates] unless short_story_templates.is_a?(Array)
@@ -456,23 +470,35 @@ module Facebooker
       BatchRun.current_batch=nil
     end
     
-    def post(method, params = {},use_session_key=true,&proc)
+    def post_without_logging(method, params = {}, use_session_key = true, &proc)
       add_facebook_params(params, method)
       use_session_key && @session_key && params[:session_key] ||= @session_key
       final_params=params.merge(:sig => signature_for(params))
       if batch_request?
         add_to_batch(final_params,&proc)
       else
-        result=service.post(final_params)
+        result = service.post(final_params)
         result = yield result if block_given?
         result
       end
     end
     
+    def post(method, params = {}, use_session_key = true, &proc)
+      if batch_request?
+        post_without_logging(method, params, use_session_key, &proc)
+      else
+        Logging.log_fb_api(method, params) do
+          post_without_logging(method, params, use_session_key, &proc)
+        end
+      end
+    end
+    
     def post_file(method, params = {})
-      add_facebook_params(params, method)
-      @session_key && params[:session_key] ||= @session_key
-      service.post_file(params.merge(:sig => signature_for(params.reject{|key, value| key.nil?})))
+      Logging.log_fb_api(method, params) do
+        add_facebook_params(params, method)
+        @session_key && params[:session_key] ||= @session_key
+        service.post_file(params.merge(:sig => signature_for(params.reject{|key, value| key.nil?})))
+      end
     end
     
     

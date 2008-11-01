@@ -11,12 +11,13 @@ class SessionTest < Test::Unit::TestCase
   end
 
   def teardown
-    flexmock_close
+    Facebooker::Session.configuration_file_path = nil
+    super    
   end
   
   def test_install_url_escapes_optional_next_parameter
     session = Facebooker::CanvasSession.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
-    assert_equal("http://www.new.facebook.com/install.php?api_key=1234567&v=1.0&next=next_url%3Fa%3D1%26b%3D2", session.install_url(:next => "next_url?a=1&b=2"))
+    assert_equal("http://www.facebook.com/install.php?api_key=1234567&v=1.0&next=next_url%3Fa%3D1%26b%3D2", session.install_url(:next => "next_url?a=1&b=2"))
   end
   
   def test_can_get_api_and_secret_key_from_environment
@@ -185,11 +186,24 @@ class SessionTest < Test::Unit::TestCase
     assert_equal 17876842716, @session.register_template_bundle("{*actor*} did something")
   end
   
-  
+  def test_can_register_template_bundle_with_action_links
+    expect_http_posts_with_responses(example_register_template_bundle_return_xml)
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    assert_equal 17876842716, @session.register_template_bundle("{*actor*} did something",nil,nil,[{:text=>"text",:href=>"href"}])
+  end
   def test_can_publish_user_action
     expect_http_posts_with_responses(publish_user_action_return_xml)
     @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
     assert @session.publish_user_action(17876842716,{})
+  end
+  
+  def test_logs_api_calls
+    call_name = 'sample.api.call'
+    params = { :param1 => true, :param2 => 'value' }
+    flexmock(Facebooker::Logging, :Logging).should_receive(:log_fb_api).once.with(
+       call_name, params, Proc)
+    @session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
+    @session.post(call_name, params)
   end
   
   def test_requests_inside_batch_are_added_to_batch
@@ -228,6 +242,12 @@ class SessionTest < Test::Unit::TestCase
     Facebooker::BatchRun.current_batch=4
     assert_equal 4,Facebooker::BatchRun.current_batch
   end
+  
+  def test_can_get_stanard_info
+    expect_http_posts_with_responses(standard_info_xml)
+    result = @session.users_standard([4])
+    assert_equal "Mike Mangino",result.first.name
+  end
 
   def test_can_query_for_pages
     expect_http_posts_with_responses(example_pages_xml)
@@ -252,11 +272,7 @@ class SessionTest < Test::Unit::TestCase
     assert_equal false, genre.dance
     assert_equal true, genre.party
   end
-  
-  def teardown
-    Facebooker::Session.configuration_file_path = nil
-  end
-  
+    
   private
   
   def example_groups_get_xml
@@ -538,6 +554,19 @@ class SessionTest < Test::Unit::TestCase
     XML
   end
   
+  def standard_info_xml
+    <<-XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?xml version="1.0" encoding="UTF-8"?>
+
+    <users_getStandardInfo_response xmlns="http://api.facebook.com/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://api.facebook.com/1.0/ http://api.facebook.com/1.0/facebook.xsd" list="true">
+      <standard_user_info>
+        <uid>12451752</uid>
+        <name>Mike Mangino</name>
+      </standard_user_info>
+    </users_getStandardInfo_response>
+    XML
+  end
 end
 
 class CanvasSessionTest < Test::Unit::TestCase
@@ -548,6 +577,6 @@ class CanvasSessionTest < Test::Unit::TestCase
    
   def test_login_url_will_display_callback_url_in_canvas
     session = Facebooker::CanvasSession.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY'])
-    assert_equal("http://www.new.facebook.com/login.php?api_key=1234567&v=1.0&canvas=true", session.login_url)
+    assert_equal("http://www.facebook.com/login.php?api_key=1234567&v=1.0&canvas=true", session.login_url)
   end
 end

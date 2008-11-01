@@ -90,9 +90,9 @@ module Facebooker
     end
   end
   
-  class RegisterUsers
+  class RegisterUsers < Parser
     def self.process(data)
-      Facebooker.json_decode(data)
+      array_of_text_values(element("connect_registerUsers_response", data), "connect_registerUsers_response_elt")
     end
   end
 
@@ -120,6 +120,12 @@ module Facebooker
     end
   end
   
+  class UserStandardInfo < Parser#:nodoc:
+    def self.process(data)
+      array_of_hashes(element('users_getStandardInfo_response', data), 'standard_user_info')
+    end
+  end
+  
   class GetLoggedInUser < Parser#:nodoc:
     def self.process(data)
       Integer(element('users_getLoggedInUser_response', data).text_value)
@@ -143,18 +149,25 @@ module Facebooker
       element('feed_publishStoryToUser_response', data).text_value
     end
   end
-  
+
   class RegisterTemplateBundle < Parser#:nodoc:
     def self.process(data)
       element('feed_registerTemplateBundle_response', data).text_value.to_i
-    end    
+    end
   end
+
   class GetRegisteredTemplateBundles < Parser
     def self.process(data)
       array_of_hashes(element('feed_getRegisteredTemplateBundles_response',data), 'template_bundle')
     end
   end
-  
+
+  class DeactivateTemplateBundleByID < Parser#:nodoc:
+    def self.process(data)
+      element('feed_deactivateTemplateBundleByID_response', data).text_value == '1'
+    end
+  end
+
   class PublishUserAction < Parser#:nodoc:
     def self.process(data)
       element('feed_publishUserAction_response', data).children[1].text_value == "1"
@@ -405,6 +418,18 @@ module Facebooker
       element('users_setStatus_response',data).text_value == '1'
     end
   end
+  
+  class GetPreference < Parser#:nodoc:
+    def self.process(data)
+      element('data_getUserPreference_response', data).text_value
+    end
+  end
+  
+  class SetPreference < Parser#:nodoc:
+    def self.process(data)
+      element('data_setUserPreference_response', data).text_value
+    end
+  end
     
   class Errors < Parser#:nodoc:
     EXCEPTIONS = {
@@ -463,6 +488,7 @@ module Facebooker
       'facebook.auth.getSession' => GetSession,
       'facebook.connect.registerUsers' => RegisterUsers,
       'facebook.users.getInfo' => UserInfo,
+      'facebook.users.getStandardInfo' => UserStandardInfo,
       'facebook.users.setStatus' => SetStatus,
       'facebook.users.getLoggedInUser' => GetLoggedInUser,
       'facebook.pages.isAdmin' => PagesIsAdmin,
@@ -475,6 +501,7 @@ module Facebooker
       'facebook.feed.publishActionOfUser' => PublishActionOfUser,
       'facebook.feed.publishTemplatizedAction' => PublishTemplatizedAction,
       'facebook.feed.registerTemplateBundle' => RegisterTemplateBundle,
+      'facebook.feed.deactivateTemplateBundleByID' => DeactivateTemplateBundleByID,
       'facebook.feed.getRegisteredTemplateBundles' => GetRegisteredTemplateBundles,
       'facebook.feed.publishUserAction' => PublishUserAction,
       'facebook.notifications.get' => NotificationsGet,
@@ -504,7 +531,9 @@ module Facebooker
       'facebook.groups.get' => GroupsGet,
       'facebook.events.getMembers' => EventMembersGet,
       'facebook.groups.getMembers' => GroupGetMembers,
-      'facebook.notifications.sendEmail' => NotificationsSendEmail
+      'facebook.notifications.sendEmail' => NotificationsSendEmail,
+      'facebook.data.getUserPreference' => GetPreference,
+      'facebook.data.setUserPreference' => SetPreference
     }
   end
 end
