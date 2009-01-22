@@ -89,10 +89,17 @@ module ActionView
 
 	# Altered to throw an error on :popup and sanitize the javascript
 	# for Facebook.
-        def convert_options_to_javascript_with_facebooker!(html_options, url ='')
+        def convert_options_to_javascript_with_facebooker!(*args) 
+          # BUG FIX (Jan. 22, 2009): changed args from (html_options, url = ' ') 
+          # to indefinate (*args) for Rails 1.2.5 compatability.
+
           if !respond_to?(:request_comes_from_facebook?) || !request_comes_from_facebook?
-            convert_options_to_javascript_without_facebooker!(html_options,url)
-   	      else
+            convert_options_to_javascript_without_facebooker!(*args)
+   	  else
+            raise ArgumentError("need html options") unless args[0]
+            html_options = args[0]
+            url = args[1] ? args[1] : ''
+
             confirm, popup = html_options.delete("confirm"), html_options.delete("popup")
 
             method, href = html_options.delete("method"), html_options['href']
@@ -124,24 +131,24 @@ module ActionView
 	# link_to("Facebooker", "http://rubyforge.org/projects/facebooker", :confirm=>"Go to Facebooker?")
 	# link_to("Facebooker", "http://rubyforge.org/projects/facebooker", :confirm=>{:title=>"the page says:, :content=>"Go to Facebooker?"})
 	# link_to("Facebooker", "http://rubyforge.org/projects/facebooker", :confirm=>{:title=>"the page says:, :content=>"Go to Facebooker?", :color=>"pink"})
-  def confirm_javascript_function_with_facebooker(confirm, fun = nil)
-    if !request_comes_from_facebook?
-      confirm_javascript_function_without_facebooker(confirm)
-    else
-      if(confirm.is_a?(Hash))
-        confirm_options = confirm.stringify_keys
-		    title = confirm_options.delete("title") || "Please Confirm"
-		    content = confirm_options.delete("content") || "Are you sure?"
-		    button_confirm = confirm_options.delete("button_confirm") || "Okay"
-		    button_cancel = confirm_options.delete("button_cancel") || "Cancel"
-		    style = confirm_options.empty? ? "" : convert_options_to_css(confirm_options)
+        def confirm_javascript_function_with_facebooker(confirm, fun = nil)
+          if !request_comes_from_facebook?
+            confirm_javascript_function_without_facebooker(confirm)
+          else
+            if(confirm.is_a?(Hash))
+              confirm_options = confirm.stringify_keys
+              title = confirm_options.delete("title") || "Please Confirm"
+              content = confirm_options.delete("content") || "Are you sure?"
+              button_confirm = confirm_options.delete("button_confirm") || "Okay"
+	      button_cancel = confirm_options.delete("button_cancel") || "Cancel"
+	      style = confirm_options.empty? ? "" : convert_options_to_css(confirm_options)
 	    else
 	      title,content,style,button_confirm,button_cancel = 'Please Confirm', confirm, "", "Okay", "Cancel"
 	    end
-      "var dlg = new Dialog().showChoice('#{escape_javascript(title.to_s)}','#{escape_javascript(content.to_s)}','#{escape_javascript(button_confirm.to_s)}','#{escape_javascript(button_cancel.to_s)}').setStyle(#{style});"+
+            "var dlg = new Dialog().showChoice('#{escape_javascript(title.to_s)}','#{escape_javascript(content.to_s)}','#{escape_javascript(button_confirm.to_s)}','#{escape_javascript(button_cancel.to_s)}').setStyle(#{style});"+
 	    "var a=this;dlg.onconfirm = function() { #{fun ? fun : 'document.setLocation(a.getHref());'} };"
 	  end
-  end
+        end
 
 	alias_method_chain :confirm_javascript_function, :facebooker
 
