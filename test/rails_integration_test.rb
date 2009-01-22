@@ -3,6 +3,7 @@ begin
   require 'action_controller'
   require 'action_controller/test_process'
   require 'facebooker/rails/controller'
+  require 'facebooker/rails/helpers/fb_connect'
   require 'facebooker/rails/helpers'
   require 'facebooker/rails/facebook_form_builder'
   require File.dirname(__FILE__)+'/../init'
@@ -363,6 +364,32 @@ class RailsIntegrationTest < Test::Unit::TestCase
     get :index, modified_params
   end
   
+  def test_session_secured_with_auth_token_if_cookies_expired
+      auth_token = 'ohaiauthtokenhere111'
+      modified_params = example_rails_params_including_fb
+      modified_params.delete('fb_sig_session_key')
+      modified_params['auth_token'] = auth_token
+      session_mock = flexmock(session = Facebooker::Session.create(ENV['FACEBOOK_API_KEY'], ENV['FACEBOOK_SECRET_KEY']))
+      session_params = { 'session_key' => '123', 'uid' => '321' }
+      session_mock.should_receive(:post).with('facebook.auth.getSession', :auth_token => auth_token).once.and_return(session_params).ordered
+      flexmock(@controller).should_receive(:new_facebook_session).once.and_return(session).ordered
+      expired_cookie_hash_for_auth.each {|k,v| @request.cookies[ENV['FACEBOOK_API_KEY']+k] = CGI::Cookie.new(ENV['FACEBOOK_API_KEY']+k,v)} 
+      get :index, modified_params
+      assert_equal(321, @controller.facebook_session.user.id)
+  end
+          
+  def test_session_can_be_secured_with_cookies
+    cookie_hash_for_auth.each {|k,v| @request.cookies[ENV['FACEBOOK_API_KEY']+k] = CGI::Cookie.new(ENV['FACEBOOK_API_KEY']+k,v)} 
+    get :index, example_rails_params_for_fb_connect
+    assert_equal(77777, @controller.facebook_session.user.id)
+    end
+  
+  def test_session_does_NOT_secure_with_expired_cookies
+    expired_cookie_hash_for_auth.each {|k,v| @request.cookies[ENV['FACEBOOK_API_KEY']+k] = CGI::Cookie.new(ENV['FACEBOOK_API_KEY']+k,v)} 
+    get :index, example_rails_params_for_fb_connect
+    assert_nil(@controller.facebook_session)
+  end
+      
   def test_user_friends_can_be_populated_from_facebook_params_if_available
     get :index, example_rails_params_including_fb
     assert_not_nil(friends = @controller.facebook_session.user.friends)
@@ -436,6 +463,18 @@ class RailsIntegrationTest < Test::Unit::TestCase
   end
   
   private
+  def example_rails_params_for_fb_connect
+    {"action"=>"index", "controller"=>"controller_which_requires_facebook_authentication"}
+  end
+
+  def expired_cookie_hash_for_auth
+    {"_ss" => "not_used", "_session_key"=> "whatever", "_user"=>"77777", "_expires"=>"#{1.day.ago.to_i}"}
+  end
+
+  def cookie_hash_for_auth
+    {"_ss" => "not_used", "_session_key"=> "whatever", "_user"=>"77777", "_expires"=>"#{1.day.from_now.to_i}"}
+  end
+   
   def example_rails_params_including_fb_for_user_not_logged_into_application
     {"fb_sig_time"=>"1186588275.5988", "fb_sig"=>"7371a6400329b229f800a5ecafe03b0a", "action"=>"index", "fb_sig_in_canvas"=>"1", "controller"=>"controller_which_requires_facebook_authentication", "fb_sig_added"=>"0", "fb_sig_api_key"=>"b6c9c857ac543ca806f4d3187cd05e09"}
   end
@@ -490,21 +529,26 @@ class RailsHelperTest < Test::Unit::TestCase
     include ActionView::Helpers::CaptureHelper
     include ActionView::Helpers::TagHelper
     include ActionView::Helpers::AssetTagHelper
+    include ActionView::Helpers::JavaScriptHelper
     include Facebooker::Rails::Helpers
-    attr_accessor :flash
+    attr_accessor :flash, :output_buffer
     def initialize
       @flash={}
       @template = self
       @content_for_test_param="Test Param"
+      @output_buffer = ""
     end
     #used for stubbing out the form builder
     def url_for(arg)
       arg
     end
+    def request
+      ActionController::TestRequest.new
+    end
     def fields_for(*args)
       ""
     end
-    
+        
   end 
 
   # used for capturing the contents of some of the helper tests
@@ -523,11 +567,11 @@ class RailsHelperTest < Test::Unit::TestCase
   end
   
   def test_fb_profile_pic
-    assert_equal "<fb:profile-pic uid=\"1234\" />", @h.fb_profile_pic("1234")
+    assert_equal "<fb:profile-pic uid=\"1234\"></fb:profile-pic>", @h.fb_profile_pic("1234")
   end
 
   def test_fb_profile_pic_with_valid_size
-    assert_equal "<fb:profile-pic size=\"small\" uid=\"1234\" />", @h.fb_profile_pic("1234", :size => :small)
+    assert_equal "<fb:profile-pic size=\"small\" uid=\"1234\"></fb:profile-pic>", @h.fb_profile_pic("1234", :size => :small)
   end
 
   def test_fb_profile_pic_with_invalid_size
@@ -535,12 +579,12 @@ class RailsHelperTest < Test::Unit::TestCase
   end
 
   def test_fb_photo
-    assert_equal "<fb:photo pid=\"1234\" />",@h.fb_photo("1234")
+    assert_equal "<fb:photo pid=\"1234\"></fb:photo>",@h.fb_photo("1234")
   end
 
   def test_fb_photo_with_object_responding_to_photo_id
     photo = flexmock("photo", :photo_id => "5678")
-    assert_equal "<fb:photo pid=\"5678\" />", @h.fb_photo(photo)
+    assert_equal "<fb:photo pid=\"5678\"></fb:photo>", @h.fb_photo(photo)
   end
 
   def test_fb_photo_with_invalid_size
@@ -556,14 +600,14 @@ class RailsHelperTest < Test::Unit::TestCase
   end
 
   def test_fb_photo_with_valid_align_value
-    assert_equal "<fb:photo align=\"right\" pid=\"1234\" />",@h.fb_photo("1234", :align => :right)
+    assert_equal "<fb:photo align=\"right\" pid=\"1234\"></fb:photo>",@h.fb_photo("1234", :align => :right)
   end
 
   def test_fb_photo_with_class
-    assert_equal "<fb:photo class=\"picky\" pid=\"1234\" />",@h.fb_photo("1234", :class => :picky)
+    assert_equal "<fb:photo class=\"picky\" pid=\"1234\"></fb:photo>",@h.fb_photo("1234", :class => :picky)
   end
   def test_fb_photo_with_style
-    assert_equal "<fb:photo pid=\"1234\" style=\"some=css;put=here;\" />",@h.fb_photo("1234", :style => "some=css;put=here;")
+    assert_equal "<fb:photo pid=\"1234\" style=\"some=css;put=here;\"></fb:photo>",@h.fb_photo("1234", :style => "some=css;put=here;")
   end
   
   def test_fb_prompt_permission_valid_no_callback
@@ -592,16 +636,16 @@ class RailsHelperTest < Test::Unit::TestCase
   end
 
   def test_fb_name
-    assert_equal "<fb:name uid=\"1234\" />",@h.fb_name("1234")
+    assert_equal "<fb:name uid=\"1234\"></fb:name>",@h.fb_name("1234")
   end
     
   def test_fb_name_with_transformed_key
-    assert_equal "<fb:name uid=\"1234\" useyou=\"true\" />", @h.fb_name(1234, :use_you => true)
+    assert_equal "<fb:name uid=\"1234\" useyou=\"true\"></fb:name>", @h.fb_name(1234, :use_you => true)
   end
   
   def test_fb_name_with_user_responding_to_facebook_id
     user = flexmock("user", :facebook_id => "5678")
-    assert_equal "<fb:name uid=\"5678\" />", @h.fb_name(user)
+    assert_equal "<fb:name uid=\"5678\"></fb:name>", @h.fb_name(user)
   end
   
   def test_fb_name_with_invalid_key
@@ -697,16 +741,16 @@ class RailsHelperTest < Test::Unit::TestCase
   end
   
   def test_fb_pronoun
-    assert_equal "<fb:pronoun uid=\"1234\" />", @h.fb_pronoun(1234)
+    assert_equal "<fb:pronoun uid=\"1234\"></fb:pronoun>", @h.fb_pronoun(1234)
   end
   
   def test_fb_pronoun_with_transformed_key
-    assert_equal "<fb:pronoun uid=\"1234\" usethey=\"true\" />", @h.fb_pronoun(1234, :use_they => true)
+    assert_equal "<fb:pronoun uid=\"1234\" usethey=\"true\"></fb:pronoun>", @h.fb_pronoun(1234, :use_they => true)
   end
   
   def test_fb_pronoun_with_user_responding_to_facebook_id
     user = flexmock("user", :facebook_id => "5678")
-    assert_equal "<fb:pronoun uid=\"5678\" />", @h.fb_pronoun(user)
+    assert_equal "<fb:pronoun uid=\"5678\"></fb:pronoun>", @h.fb_pronoun(user)
   end
   
   def test_fb_pronoun_with_invalid_key
@@ -717,7 +761,7 @@ class RailsHelperTest < Test::Unit::TestCase
     @h.expects(:capture).returns("wall content")
     @h.fb_wall do 
     end
-    assert_equal "<fb:wall>wall content</fb:wall>",_erbout
+    assert_equal "<fb:wall>wall content</fb:wall>",@h.output_buffer
   end
   
   def test_fb_multi_friend_request
@@ -743,7 +787,7 @@ class RailsHelperTest < Test::Unit::TestCase
     @h.expects(:capture).returns("dialog content")
     @h.fb_dialog( "my_dialog", "1" ) do
     end
-    assert_equal '<fb:dialog cancel_button="1" id="my_dialog">dialog content</fb:dialog>', _erbout
+    assert_equal '<fb:dialog cancel_button="1" id="my_dialog">dialog content</fb:dialog>', @h.output_buffer
   end
   def test_fb_dialog_title
     assert_equal '<fb:dialog-title>My Little Dialog</fb:dialog-title>', @h.fb_dialog_title("My Little Dialog")
@@ -752,7 +796,7 @@ class RailsHelperTest < Test::Unit::TestCase
     @h.expects(:capture).returns("dialog content content")
     @h.fb_dialog_content do
     end
-    assert_equal '<fb:dialog-content>dialog content content</fb:dialog-content>', _erbout
+    assert_equal '<fb:dialog-content>dialog content content</fb:dialog-content>', @h.output_buffer
   end
   def test_fb_dialog_button
     assert_equal '<fb:dialog-button clickrewriteform="my_form" clickrewriteid="my_dialog" clickrewriteurl="http://www.some_url_here.com/dialog_return.php" type="submit" value="Yes" />',
@@ -853,14 +897,17 @@ class RailsHelperTest < Test::Unit::TestCase
     assert_equal "<fb:comments candelete=\"false\" canpost=\"true\" numposts=\"4\" optional=\"false\" xid=\"xxx\"><fb:title>TITLE</fb:title></fb:comments>", @h.fb_comments("xxx",true,false,4,:optional=>false, :title => "TITLE") 
   end
   def test_fb_board
-    assert_equal "<fb:board optional=\"false\" xid=\"xxx\" />", @h.fb_board("xxx",:optional => false) 
+    assert_equal "<fb:board optional=\"false\" xid=\"xxx\"></fb:board>", @h.fb_board("xxx",:optional => false) 
+  end
+  def test_fb_board_with_title
+    assert_equal "<fb:board optional=\"false\" xid=\"xxx\"><fb:title>TITLE</fb:title></fb:board>", @h.fb_board("xxx",:optional=>false, :title => "TITLE") 
   end
   
   def test_fb_dashboard
     @h.expects(:capture).returns("dashboard content")
     @h.fb_dashboard do 
     end
-    assert_equal "<fb:dashboard>dashboard content</fb:dashboard>", _erbout
+    assert_equal "<fb:dashboard>dashboard content</fb:dashboard>", @h.output_buffer
   end
   def test_fb_dashboard_non_block
     assert_equal "<fb:dashboard></fb:dashboard>", @h.fb_dashboard
@@ -870,15 +917,67 @@ class RailsHelperTest < Test::Unit::TestCase
     @h.expects(:capture).returns("wide profile content")
     @h.fb_wide do
     end
-    assert_equal "<fb:wide>wide profile content</fb:wide>", _erbout
+    assert_equal "<fb:wide>wide profile content</fb:wide>", @h.output_buffer
   end
   
   def test_fb_narrow
     @h.expects(:capture).returns("narrow profile content")
     @h.fb_narrow do
     end
-    assert_equal "<fb:narrow>narrow profile content</fb:narrow>", _erbout
+    assert_equal "<fb:narrow>narrow profile content</fb:narrow>", @h.output_buffer
   end  
+  
+  def test_fb_login_button
+    assert_equal "<fb:login-button onlogin=\"somejs\"></fb:login-button>",@h.fb_login_button("somejs")
+  end
+  
+  def test_init_fb_connect_no_features
+    assert ! @h.init_fb_connect.match(/XFBML/)
+  end
+  
+  def test_init_fb_connect_with_features
+    assert @h.init_fb_connect("XFBML").match(/XFBML/)
+  end
+  
+  def test_fb_connect_javascript_tag
+    assert_equal "<script src=\"http://static.ak.connect.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php\" type=\"text/javascript\"></script>",
+      @h.fb_connect_javascript_tag
+  end
+  
+  def test_fb_container
+    @h.expects(:capture).returns("Inner Stuff")
+    @h.fb_container(:condition=>"somejs") do
+    end
+    assert_equal "<fb:container condition=\"somejs\">Inner Stuff</fb:container>",@h.output_buffer
+  end
+  
+  def test_fb_eventlink
+    assert_equal '<fb:eventlink eid="21150032416"></fb:eventlink>',@h.fb_eventlink("21150032416")
+  end
+  
+  def test_fb_grouplink
+    assert_equal '<fb:grouplink gid="2541896821"></fb:grouplink>',@h.fb_grouplink("2541896821")
+  end
+  
+  def test_fb_serverfbml
+    @h.expects(:capture).returns("Inner Stuff")
+    @h.fb_serverfbml(:condition=>"somejs") do
+    end
+    assert_equal "<fb:serverfbml condition=\"somejs\">Inner Stuff</fb:serverfbml>",@h.output_buffer
+  end
+  
+  def test_fb_share_button
+    assert_equal "<fb:share-button class=\"url\" href=\"http://www.elevatedrails.com\"></fb:share-button>",@h.fb_share_button("http://www.elevatedrails.com")
+  end
+  
+  def test_fb_unconnected_friends_count_without_condition
+    assert_equal "<fb:unconnected-friends-count></fb:unconnected-friends-count>",@h.fb_unconnected_friends_count
+  end
+  
+  def test_fb_user_status
+    user=flexmock("user", :facebook_id => "5678")
+    assert_equal '<fb:user-status linked="false" uid="5678"></fb:user-status>',@h.fb_user_status(user,false)
+  end
 end
 class TestModel
   attr_accessor :name,:facebook_id
@@ -890,9 +989,9 @@ class RailsFacebookFormbuilderTest < Test::Unit::TestCase
     include ActionView::Helpers::CaptureHelper
     include ActionView::Helpers::TagHelper
     include Facebooker::Rails::Helpers
-    attr_accessor :_erbout
+    attr_accessor :output_buffer
     def initialize
-      @_erbout=""
+      @output_buffer=""
     end
   end
   def setup
@@ -947,7 +1046,7 @@ class RailsFacebookFormbuilderTest < Test::Unit::TestCase
   
   def test_custom
     @template.expects(:password_field).returns("password_field")
-    assert_equal "<fb:editor-custom label=\"Name\"></fb:editor-custom>",@form_builder.password_field(:name)
+    assert_equal "<fb:editor-custom label=\"Name\">password_field</fb:editor-custom>",@form_builder.password_field(:name)
   end
   
   def test_text
@@ -955,8 +1054,10 @@ class RailsFacebookFormbuilderTest < Test::Unit::TestCase
   end
   
   def test_multi_friend_input
-    assert_equal "<fb:editor-custom label=\"Friends\"></fb:editor-custom>",@form_builder.multi_friend_input
+    assert_equal "<fb:editor-custom label=\"Friends\"><fb:multi-friend-input></fb:multi-friend-input></fb:editor-custom>",@form_builder.multi_friend_input
   end
+  
+
 end
 
 class RailsPrettyErrorsTest < Test::Unit::TestCase
@@ -992,18 +1093,22 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
   class UrlHelperExtensionsClass
     include ActionView::Helpers::UrlHelper
     include ActionView::Helpers::TagHelper
-    def initialize(controller, canvas)
+    def initialize(controller)
       @controller = controller
-      @canvas = canvas
     end
 
     def protect_against_forgery?
        false
     end
-
-    def request_is_for_a_facebook_canvas?
-        @canvas
+    
+    def request_comes_from_facebook?
+      @request_comes_from_facebook
     end
+    
+    def request_comes_from_facebook=(val)
+      @request_comes_from_facebook = val
+    end
+
   end 
   class UrlHelperExtensionsController < NoisyController    
     def index
@@ -1022,8 +1127,12 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
     @request    = FacebookRequest.new
     @response   = ActionController::TestResponse.new
 
-    @u = UrlHelperExtensionsClass.new(@controller, true)
-    @non_canvas_u = UrlHelperExtensionsClass.new(@controller, false)
+    @u = UrlHelperExtensionsClass.new(@controller)
+    @u.request_comes_from_facebook = true
+    
+    @non_canvas_u = UrlHelperExtensionsClass.new(@controller)
+    @non_canvas_u.request_comes_from_facebook = false
+    
     @label = "Testing"
     @url = "test.host"
     @prompt = "Are you sure?"
@@ -1031,6 +1140,8 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
     @title = "Confirm Request"
     @style = {:color => 'black', :background => 'white'}
     @verbose_style = "{background: 'white', color: 'black'}"
+    @default_okay = "Okay"
+    @default_cancel = "Cancel"
     @default_style = "" #"'width','200px'"
   end
 
@@ -1043,19 +1154,19 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
   end
 
   def test_link_to_with_confirm
-    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\',\'#{@default_okay}\',\'#{@default_cancel}\').setStyle(#{@default_style});"+
                  "var a=this;dlg.onconfirm = function() { " + 
                  "document.setLocation(a.getHref()); };return false;\">#{@label}</a>",
                   @u.link_to(@label, @url, :confirm => @prompt) )
   end
   def test_link_to_with_confirm_with_title
-    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@title}\',\'#{@prompt}\',\'#{@default_okay}\',\'#{@default_cancel}\').setStyle(#{@default_style});"+
                  "var a=this;dlg.onconfirm = function() { " + 
                  "document.setLocation(a.getHref()); };return false;\">#{@label}</a>",
                   @u.link_to(@label, @url, :confirm => {:title=>@title,:content=>@prompt}) )
   end
   def test_link_to_with_confirm_with_title_and_style
-    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@title}\',\'#{@prompt}\').setStyle(#{@verbose_style});"+
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@title}\',\'#{@prompt}\',\'#{@default_okay}\',\'#{@default_cancel}\').setStyle(#{@verbose_style});"+
                  "var a=this;dlg.onconfirm = function() { " + 
                  "document.setLocation(a.getHref()); };return false;\">#{@label}</a>",
                   @u.link_to(@label, @url, :confirm => {:title=>@title,:content=>@prompt}.merge!(@style)) )
@@ -1070,7 +1181,7 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
   end
 
   def test_link_to_with_confirm_and_method
-    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+    assert_dom_equal( "<a href=\"#{@url}\" onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\',\'#{@default_okay}\',\'#{@default_cancel}\').setStyle(#{@default_style});"+
                  "var a=this;dlg.onconfirm = function() { " + 
                  "var f = document.createElement('form'); f.setStyle('display','none'); "+
                  "a.getParentNode().appendChild(f); f.setMethod('POST'); f.setAction(a.getHref());" +
@@ -1093,7 +1204,7 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
 
   def test_button_to_with_confirm
     assert_equal "<form method=\"post\" action=\"#{@url}\" class=\"button-to\"><div>" +
-                 "<input onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\').setStyle(#{@default_style});"+
+                 "<input onclick=\"var dlg = new Dialog().showChoice(\'#{@default_title}\',\'#{@prompt}\',\'#{@default_okay}\',\'#{@default_cancel}\').setStyle(#{@default_style});"+
                  "var a=this;dlg.onconfirm = function() { "+
                  "a.getForm().submit(); };return false;\" type=\"submit\" value=\"#{@label}\" /></div></form>", 
                  @u.button_to(@label,@url, :confirm=>@prompt)
@@ -1117,6 +1228,7 @@ class RailsUrlHelperExtensionsTest < Test::Unit::TestCase
   def test_link_to_if_with_false
        assert_equal @label, @u.link_to_if(false,@label,@url)
   end
+  
 end
 
 
