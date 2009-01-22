@@ -34,6 +34,7 @@ module Facebooker
     #     def publish_action(f)
     #       send_as :user_action
     #       from f
+    #       story_size SHORT # or ONE_LINE or FULL
     #       data :friend=>"Mike"
     #     end
     #   
@@ -87,6 +88,21 @@ module Facebooker
     #
     # Publisher makes many helpers available, including the linking and asset helpers
     class Publisher
+      
+      #story sizes from the Facebooker API
+      ONE_LINE=1
+      SHORT=2
+      FULL=4
+      
+      def initialize
+        @controller = PublisherController.new        
+      end
+      
+      # use facebook options everywhere
+      def request_comes_from_facebook?
+        true
+      end
+      
       class FacebookTemplate < ::ActiveRecord::Base
         
         
@@ -97,7 +113,7 @@ module Facebooker
           "FacebookTemplate"
         end
         
-        def changed?(hash)
+        def template_changed?(hash)
           if respond_to?(:content_hash)
             content_hash != hash 
           else
@@ -139,7 +155,7 @@ module Facebooker
           
           def find_in_db(klass,method)
             template = find_by_template_name(template_name(klass,method))
-            if template and template.changed?(hashed_content(klass,method))
+            if template and template.template_changed?(hashed_content(klass,method))
               template.destroy
               template = nil
             end
@@ -158,9 +174,12 @@ module Facebooker
           
           def hashed_content(klass, method)
             publisher = setup_publisher(klass,method)
-            Digest::MD5.hexdigest [publisher.one_line_story_templates, publisher.short_story_templates, publisher.full_story_template].to_json
+            # sort the Hash elements (in the short_story and full_story) before generating MD5
+            Digest::MD5.hexdigest [publisher.one_line_story_templates,
+               (publisher.short_story_templates and publisher.short_story_templates.collect{|ss| ss.to_a.sort_by{|e| e[0].to_s}}),
+               (publisher.full_story_template and publisher.full_story_template.to_a.sort_by{|e| e[0].to_s})
+               ].to_json
           end
-          
           
           def template_name(klass,method)
             "#{klass.name}::#{method}"
@@ -204,11 +223,14 @@ module Facebooker
         attr_accessor :body_general
         attr_accessor :template_id
         attr_accessor :template_name
-        
+        attr_accessor :story_size
         def target_ids=(val)
           @target_ids = val.is_a?(Array) ? val.join(",") : val
         end
-        
+        def data_hash
+          default_data = story_size.nil? ? {} : {:story_size=>story_size}
+          default_data.merge(data||{})
+        end
       end
       
       cattr_accessor :ignore_errors
@@ -342,7 +364,7 @@ module Facebooker
         when Ref
           Facebooker::Session.create.server_cache.set_ref_handle(_body.handle,_body.fbml)
         when UserAction
-          @from.session.publish_user_action(_body.template_id,_body.data||{},_body.target_ids,_body.body_general)
+          @from.session.publish_user_action(_body.template_id,_body.data_hash,_body.target_ids,_body.body_general)
         else
           raise UnspecifiedBodyType.new("You must specify a valid send_as")
         end
@@ -374,6 +396,9 @@ module Facebooker
         returning ActionView::Base.new([template_root,controller_root], assigns, self) do |template|
           template.controller=self
           template.extend(self.class.master_helper_module)
+          def template.request_comes_from_facebook?
+            true
+          end
         end
       end
   
@@ -395,11 +420,14 @@ module Facebooker
         def protect_against_forgery?
           @paf ||= ActionController::Base.new.send(:protect_against_forgery?)
         end
+        
+        # url_for calls in publishers tend to want full paths
+        def url_for(options = {})
+          super(options.kind_of?(Hash) ? {:only_path => false}.update(options) : options)
+        end
       end
       ActionController::Routing::Routes.named_routes.install(self.master_helper_module)
       include self.master_helper_module
-      # Publisher is the controller, it should do the rewriting
-      include ActionController::UrlWriter
       class <<self
         
         def register_all_templates
@@ -470,6 +498,16 @@ module Facebooker
         end
     
       end
+      class PublisherController
+        include Facebooker::Rails::Publisher.master_helper_module
+        include ActionController::UrlWriter
+        
+        def self.default_url_options(*args)
+          Facebooker::Rails::Publisher.default_url_options(*args)
+        end
+        
+      end
+      
     end
   end
 end

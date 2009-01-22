@@ -58,7 +58,8 @@ module Facebooker
     
     def self.hashinate(response_element)
       response_element.children.reject{|c| c.kind_of? REXML::Text}.inject({}) do |hash, child|
-        hash[child.name] = if child.children.size == 1 && child.children.first.kind_of?(REXML::Text)
+        # If the node hasn't any child, and is not a list, we want empty strings, not empty hashes.
+        hash[child.name] = if (child.children.size == 1 && child.children.first.kind_of?(REXML::Text)) || (child.children.size == 0 && child.attributes['list'] != 'true')
           anonymous_field_from(child, hash) || child.text_value
         else
           if child.attributes['list'] == 'true'
@@ -400,8 +401,8 @@ module Facebooker
         memo
       end
     end
-    
-    private
+
+  private
     def self.are_friends?(raw_value)
       if raw_value == '1'
         true
@@ -431,6 +432,12 @@ module Facebooker
     end
   end
     
+  class UserHasPermission < Parser
+    def self.process(data)
+      element('users_hasAppPermission_response', data).text_value
+    end
+  end  
+
   class Errors < Parser#:nodoc:
     EXCEPTIONS = {
       1 	=> Facebooker::Session::UnknownError,
@@ -491,6 +498,7 @@ module Facebooker
       'facebook.users.getStandardInfo' => UserStandardInfo,
       'facebook.users.setStatus' => SetStatus,
       'facebook.users.getLoggedInUser' => GetLoggedInUser,
+      'facebook.users.hasAppPermission' => UserHasPermission,
       'facebook.pages.isAdmin' => PagesIsAdmin,
       'facebook.pages.getInfo' => PagesGetInfo,
       'facebook.friends.get' => GetFriends,

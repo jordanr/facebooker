@@ -178,8 +178,10 @@ module Facebooker
             Photo.from_hash(hash)
           when 'event_member'
             Event::Attendance.from_hash(hash)
+          else
+            hash
           end
-        end        
+        end
       end
     end
     
@@ -211,13 +213,13 @@ module Facebooker
     end
 
     def users_standard(user_ids, fields=[])
-      post("facebook.users.getStandardInfo",:uids=>user_ids.join(","),:fields=>User.user_fields(fields)) do |users|
+      post("facebook.users.getStandardInfo",:uids=>user_ids.join(","),:fields=>User.standard_fields(fields)) do |users|
         users.map { |u| User.new(u)}
       end
     end
 
     def users(user_ids, fields=[])
-      post("facebook.users.getInfo",:uids=>user_ids.join(","),:fields=>User.standard_fields(fields)) do |users|
+      post("facebook.users.getInfo",:uids=>user_ids.join(","),:fields=>User.user_fields(fields)) do |users|
         users.map { |u| User.new(u)}
       end
     end
@@ -259,10 +261,10 @@ module Facebooker
       uids1 = []
       uids2 = []
       array_of_pairs_of_users.each do |pair|
-        uids1 = pair.first
-        uids2 = pair.last
+        uids1 << pair.first
+        uids2 << pair.last
       end
-      post('facebook.friends.areFriends', :uids1 => uids1, :uids2 => uids2)
+      post('facebook.friends.areFriends', :uids1 => uids1.join(','), :uids2 => uids2.join(','))
     end
     
     def get_photos(pids = nil, subj_id = nil,  aid = nil)

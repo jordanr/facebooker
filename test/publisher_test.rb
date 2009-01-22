@@ -6,6 +6,7 @@ require 'action_controller/test_process'
 require 'active_record'
 require File.dirname(__FILE__)+'/../init'
 require 'facebooker/rails/controller'
+require 'facebooker/rails/helpers/fb_connect'
 require 'facebooker/rails/helpers'
 require 'facebooker/rails/publisher'
 
@@ -118,6 +119,14 @@ class TestPublisher < Facebooker::Rails::Publisher
     from user
     data :friend=>"Mike"
   end
+  def user_action_with_story_size(user)
+    send_as :user_action
+    from user
+    story_size ONE_LINE
+    story_size FULL
+    story_size SHORT
+    data :friend=>"Mike"
+  end
   def user_action_no_data(user)
     send_as :user_action
     from user
@@ -162,7 +171,7 @@ class FacebookTemplateTest < Test::Unit::TestCase
   
   def test_find_in_db_should_run_find
     FacebookTemplate.expects(:find_by_template_name).with("TestPublisher::simple_user_action").returns(@template)
-    @template.stubs(:changed?).returns(false)
+    @template.stubs(:template_changed?).returns(false)
     assert_equal FacebookTemplate.find_in_db(TestPublisher,"simple_user_action"), @template
   end
   
@@ -176,14 +185,14 @@ class FacebookTemplateTest < Test::Unit::TestCase
   def test_find_in_db_should_check_for_change_if_found
     FacebookTemplate.stubs(:find_by_template_name).returns(@template)
     FacebookTemplate.stubs(:hashed_content).returns("MY CONTENT")
-    @template.expects(:changed?).with("MY CONTENT").returns(false)
+    @template.expects(:template_changed?).with("MY CONTENT").returns(false)
     FacebookTemplate.find_in_db(TestPublisher,"simple_user_action")  
   end
   
   def test_find_in_db_should_destroy_old_record_if_changed
     FacebookTemplate.stubs(:find_by_template_name).returns(@template)
     FacebookTemplate.stubs(:hashed_content).returns("MY CONTENT")
-    @template.stubs(:changed?).returns(true)
+    @template.stubs(:template_changed?).returns(true)
     @template.expects(:destroy)
     FacebookTemplate.find_in_db(TestPublisher,"simple_user_action")  
   end
@@ -191,7 +200,7 @@ class FacebookTemplateTest < Test::Unit::TestCase
   def test_find_in_db_should_re_register_if_changed
     FacebookTemplate.stubs(:find_by_template_name).with("TestPublisher::simple_user_action").returns(@template)
     FacebookTemplate.stubs(:hashed_content).returns("MY CONTENT")
-    @template.stubs(:changed?).returns(true)
+    @template.stubs(:template_changed?).returns(true)
     @template.stubs(:destroy)
     FacebookTemplate.expects(:register).with(TestPublisher,"simple_user_action").returns(@template)
     FacebookTemplate.find_in_db(TestPublisher,"simple_user_action")    
@@ -353,6 +362,19 @@ class PublisherTest < Test::Unit::TestCase
     TestPublisher.deliver_user_action(@from_user)
   end
   
+  def test_publish_user_action_with_story_size
+    @from_user = Facebooker::User.new
+    @session = Facebooker::Session.new("","")
+    @from_user.stubs(:session).returns(@session)
+    @session.expects(:publish_user_action).with(20309041537,{:friend=>"Mike", :story_size=>2},nil,nil)
+    
+    Facebooker::Rails::Publisher::FacebookTemplate.expects(:bundle_id_for_class_and_method).
+                                                   with(TestPublisher, 'user_action_with_story_size').
+                                                   returns(20309041537)
+    TestPublisher.deliver_user_action_with_story_size(@from_user)
+    
+  end
+  
   def test_publishing_user_data_no_action_gives_nil_hash
     @from_user = Facebooker::User.new
     @session = Facebooker::Session.new("","")
@@ -391,7 +413,7 @@ class PublisherTest < Test::Unit::TestCase
     assert_equal({:src => '/images/image.png', :href => 'raw_string' },
         TestPublisher.new.image('image.png', 'raw_string'))
     assert_equal({:src => '/images/image.png', :href => 'http://apps.facebook.com/mike/pokes/do/1' },
-        TestPublisher.new.image('image.png', {:controller => :pokes, :action => :do, :id => 1}))    
+        TestPublisher.new.image('image.png', {:controller => :pokes, :action => :do, :id => 1}))
   end
   
   def test_action_link
